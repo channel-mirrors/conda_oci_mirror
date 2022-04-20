@@ -165,21 +165,16 @@ def check_checksum(path, package_dict):
     else:
         return True
 
-
 existing_tags_cache = {}
-
 
 def get_existing_tags(oci, channel, subdir, package):
     global existing_tags_cache
-
-    if package in existing_tags_cache:
+    if existing_tags_cache.get(package):
         return existing_tags_cache[package]
 
     gh_name = f"{channel}/{subdir}/{package}"
     tags = oci.get_tags(gh_name)
-
     print(f"Found {len(tags)} existing tags for {gh_name}")
-
     existing_tags_cache[package] = tags
     return tags
 
@@ -188,6 +183,14 @@ def get_existing_packages(oci, channel, subdir, package):
     tags = get_existing_tags(oci, channel, subdir, package)
 
     return set(f"{package}-{tag}.tar.bz2" for tag in tags)
+
+
+def delete_dir(dir_path):
+    for sub in dir_path.iterdir():
+        if sub.is_dir():
+            delete_dir(sub)
+        else:
+            sub.unlink()
 
 
 class Task:
@@ -233,7 +236,6 @@ class Task:
             self.file.unlink()
             self.file = None
             return self.retry()
-
         try:
             upload_conda_package(self.file, self.remote_loc, self.channel)
         except:
@@ -242,6 +244,9 @@ class Task:
         print(f"File uploaded to {self.remote_loc}")
         # delete the package
         self.file.unlink()
+
+        # delete all packages
+        delete_dir(self.cache_dir)
 
 
 def run_task(t):
@@ -292,7 +297,7 @@ def mirror(
                             remote_loc,
                         )
                     )
-
+                    
     if not dry_run:
         with mp.Pool(processes=8) as pool:
             pool.map(run_task, tasks)
